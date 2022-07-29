@@ -87,12 +87,16 @@
         local.get $ip)
 
 
+  ;; Utilities for increasing and decreasing data/frame pointers by 1
+  (func $incrp (param $pointer i32) (result i32)
+        (i32.add (local.get $pointer) (i32.const 8)))
+  (func $decrp (param $pointer i32) (result i32)
+        (i32.sub (local.get $pointer) (i32.const 8)))
+
   (func $print_stack
         (param $sp i32) (param $fp i32) (param $ip i32) (result i32 i32 i32)
 
-        local.get $sp
-        i64.load
-        call $print_i64
+        (call $print_i64 (i64.load (local.get $sp)))
 
         local.get $sp
         local.get $fp
@@ -105,7 +109,7 @@
 
         (i64.store (local.get $sp) (local.get $val))
         
-        (i32.add (local.get $sp) (i32.const 8))
+        (call $incrp (local.get $sp))
         local.get $fp
         local.get $ip)
 
@@ -113,26 +117,19 @@
   (func $drop
         (param $sp i32) (param $fp i32) (param $ip i32) (result i32 i32 i32)
 
-        (i32.sub (local.get $sp) (i32.const 8))
-
+        (call $decrp (local.get $sp))
         local.get $fp
         local.get $ip)
 
   (func $add
         (param $sp i32) (param $fp i32) (param $ip i32) (result i32 i32 i32)
 
-        (i32.sub (local.get $sp) (i32.const 8))
-        local.set $sp
-
-        ;; Set up destination for storing result later
-        local.get $sp
+        (local.set $sp (call $decrp (local.get $sp)))
 
         local.get $sp
-        i64.load
 
-        (i32.sub (local.get $sp) (i32.const 8))
-        i64.load
-
+        (i64.load (local.get $sp))
+        (i64.load (call $decrp (local.get $sp)))
         i64.add
 
         i64.store
