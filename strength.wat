@@ -33,6 +33,7 @@
   ;;
   ;;  64k | Data stack
   ;;  64k | Return stack
+  ;;  32b | Word name buffer
   ;; rest | Dictionary
   (memory 4)
 
@@ -41,6 +42,7 @@
         $drop
         $swap
         )
+
 
   (type $fn (func (param i32) (param i32) (param i32) (result i32 i32 i32)))
 
@@ -66,10 +68,72 @@
         i32.const 0
 
         ;; Frame pointer
-        i32.const 65536
+        i32.const 0x1_0000
 
         ;; Instruction pointer
         i32.const 5)
+
+  ;; Structure of a dictionary entry:
+  ;; 2b  - Link to previous word
+  ;; 1b  - Length of the word name + flags
+  ;; len - Word name
+  ;; ?   - Codeword
+  (func $insert_word
+        (param $here i32)
+        (param $link i32) ;; pointer to use in i32.store16 (0 if it's the first word)
+        (param $immediate i32) ;; 1 or 0
+        (param $hidden i32) ;; 1 or 0
+        (result i32) ;; pointer to the start of the codeword
+
+        ;; Word length
+        (local $wl i32)
+
+        ;; Store the link to the last word
+        (i32.store16 (local.get $link) (local.get $here))
+
+        ;; Copy the name of the word from the word buffer at 0x20000 to the word header
+        ;; and save the length of the name in $wl
+        (local.set $wl (i32.const 0))
+        (loop $copy_word
+          (i32.eqz (i32.load8_u (i32.add (local.get $wl)
+                                         (i32.const 0x2_0000))))
+          (if
+            (then
+              (br $copy_word))
+            (else
+              (i32.store8
+                ;; The byte at position word buffer + word length
+                (i32.load8_u (i32.add (local.get $wl)
+                                      (i32.const 0x2_0000)))
+                ;; The position at the start of the header + link + len + word length
+                (i32.add (i32.add (local.get $here)
+                                  (i32.const 3)) ;; link (2) + len (1)
+                         (local.get $wl)))
+
+              (local.set $wl (i32.add (local.get $wl)
+                                      (i32.const 1))))))
+
+        ;; Store the word len and its flags
+        (i32.store8
+          ;; $immediate << 7 | $hidden << 5 | $wp
+          (i32.or (i32.or (i32.rotl (local.get $immediate) (i32.const 7))
+                          (i32.rotl (local.get $hidden) (i32.const 5)))
+                  (local.get $wl))
+          ;; $here + link (2)
+          (i32.add (local.get $here)
+                   (i32.const 2)))
+
+
+        ;; Return pointer to the codeword
+        (i32.add (i32.add (local.get $here)
+                          (local.get 3))
+                 (local.get $wl)))
+
+  (func $init_words
+        (i64.const 7017280452245743464)
+        drop)
+
+
 
   (func $print_registers
         (param $sp i32) (param $fp i32) (param $ip i32) (result i32 i32 i32)
